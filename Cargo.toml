@@ -1,0 +1,20 @@
+[package]
+name = "project-sync"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+clap = { version = "4.5.37", features = ["derive"] }
+colored = "3.0.0"
+directories = "6.0.0"
+notify = "8.0.0"
+serde = { version = "1.0.219", features = ["derive"] }
+shellexpand = "3.1.1"
+toml = "0.8.22"
+
+[profile.release]
+opt-level = "z"         # Optimize for size ("z" is smaller than "s")
+lto = true              # Enable Link Time Optimization
+codegen-units = 1       # Fewer codegen units = better optimization
+#panic = "abort"         # Don't include panic unwinding code
+#strip = true            # Strip debug symbols from final binary
