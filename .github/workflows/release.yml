@@ -35,7 +35,7 @@ jobs:
     - name: Create Zip Archive
       run: |
         version=$(echo ${{ steps.get_release_version.outputs.version }})
-        zip -r "$version-macos-aarch64.zip" target/release/$PROJECT_NAME
+        zip -j "$version-macos-aarch64.zip" target/release/$PROJECT_NAME
         # NOTE: use zip -j to avoid including paths
 
     - name: Upload Release Artifact with gh
@@ -69,7 +69,7 @@ jobs:
     - name: Create Zip Archive
       run: |
         version=$(echo ${{ steps.get_release_version.outputs.version }})
-        zip -r "$version-macos-x86.zip" target/release/$PROJECT_NAME
+        zip -j "$version-macos-x86.zip" target/release/$PROJECT_NAME
 
     - name: Upload Release Artifact with gh
       env:
@@ -102,7 +102,7 @@ jobs:
   #   - name: Create Zip Archive
   #     run: |
   #       version=$(echo ${{ steps.get_release_version.outputs.version }})
-  #       zip -r "$version-linux-x86.zip" target/release/$PROJECT_NAME
+  #       zip -j "$version-linux-x86.zip" target/release/$PROJECT_NAME
   #
   #   - name: Upload Release Artifact with gh
   #     env:
@@ -137,7 +137,7 @@ jobs:
     - name: Create Zip Archive
       run: |
         version=$(echo ${{ steps.get_release_version.outputs.version }})
-        zip -r "$version-linux-x86.zip" target/x86_64-unknown-linux-musl/release/$PROJECT_NAME
+        zip -j "$version-linux-x86.zip" target/x86_64-unknown-linux-musl/release/$PROJECT_NAME
 
     - name: Upload Release Artifact with gh
       env:
@@ -174,7 +174,7 @@ jobs:
     - name: Create Zip Archive
       run: |
         version=$(echo ${{ steps.get_release_version.outputs.version }})
-        zip -r "$version-windows-x86.zip" target/x86_64-pc-windows-gnu/release/$PROJECT_NAME.exe
+        zip -j "$version-windows-x86.zip" target/x86_64-pc-windows-gnu/release/$PROJECT_NAME.exe
 
     - name: Upload Release Artifact with gh
       env:
