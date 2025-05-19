@@ -21,12 +21,12 @@ struct Args {
 
     /// Path TOML file with sync config
     #[arg(short, long)]
-    config: Option<PathBuf>,
+    config: PathBuf,
 }
 
 fn main() {
     let args = Args::parse();
 
-    let config_path = args.config.unwrap_or_else(|| std::env::current_exe().expect("Can not get executable location").join("sync.toml"));
+    let config_path = args.config;
     sync::run(&config_path, args.filter);
 }
