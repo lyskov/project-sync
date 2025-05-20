@@ -123,7 +123,7 @@ impl ProjectConfig {
         // Retain only those entries that match the filter string
         if let Some(filter) = &self.filter {
             self.projects.retain(|_name, project| {
-                project.destination.contains(filter) //|| project.path.contains(&filter)
+                project.destination.contains(filter) || project.name == _SELF_CONFIG_ //|| project.path.contains(&filter)
             });
         }
 
