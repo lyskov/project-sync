@@ -16,7 +16,7 @@ const _SELF_CONFIG_: &str = "project-sync-self-config";
 pub struct Sync {
     pub name: String,
     pub source: String,
-    pub destination: String,
+    pub destinations: Vec<String>,
     pub synced: Instant,
     //updated: Instant,
     pub sync_on_start: bool,
@@ -51,46 +51,50 @@ impl Sync {
     }
 
     fn sync(&mut self) {
-        //std::thread::sleep(Duration::from_secs_f32(0.25));
-        print!("Syncing {} ", self.name.bright_green());
+        for destination in &self.destinations {
+            //std::thread::sleep(Duration::from_secs_f32(0.25));
+            print!("Syncing {} ", self.name.bright_green());
 
-        let verbosity = "--itemize-changes"; // -v
-        let extras = self.sync_extras();
-        let command_line = format!("rsync {verbosity} -az -e ssh {extras} {} '{}'", self.source, self.destination);
+            let verbosity = "--itemize-changes"; // -v
+            let extras = self.sync_extras();
+            let command_line = format!("rsync {verbosity} -az -e ssh {extras} {} '{}'", self.source, destination);
 
-        println!("{}", command_line.white().dimmed());
+            println!("{}", command_line.white().dimmed());
 
-        let mut attempts = 0;
-        let start = Instant::now();
+            let mut attempts = 0;
+            let start = Instant::now();
 
-        self.synced = Instant::now();
-        while !std::process::Command::new("sh")
-            .arg("-c")
-            .arg(&command_line)
-            .status()
-            .expect("could not run shell command...")
-            .success()
-        {
-            println!("{}... going to sleep and retry...", "FAILED".on_red());
-            std::thread::sleep(Duration::from_secs(4));
-            if attempts > 7 {
-                println!("Too many failed attempts: {}, giving up...", attempts.to_string().bright_red());
-                break;
+            self.synced = Instant::now();
+            while !std::process::Command::new("sh")
+                .arg("-c")
+                .arg(&command_line)
+                .status()
+                .expect("could not run shell command...")
+                .success()
+            {
+                println!("{}... going to sleep and retry...", "FAILED".on_red());
+                std::thread::sleep(Duration::from_secs(4));
+                if attempts > 7 {
+                    println!("Too many failed attempts: {}, giving up...", attempts.to_string().bright_red());
+                    break;
+                }
+                attempts += 1;
             }
-            attempts += 1;
-        }
 
-        let _duration = start.elapsed();
-        //println!("Elapsed time: {:.2?}", _duration);
+            let _duration = start.elapsed();
+            //println!("Elapsed time: {:.2?}", _duration);
+        }
     }
     fn create_project_watcher(&self, transmitter: std::sync::mpsc::Sender<SyncUpdate>) -> notify::RecommendedWatcher {
         println!(
-            "Adding {:<16} {:>24} → {:<32} sync-on-start: {}",
+            "Adding {:<16} {:>24} → [", // {:<32}
             self.name.bright_green(),
             self.source,
-            self.destination,
-            self.sync_on_start
         );
+        for d in &self.destinations {
+            println!("    {d}");
+        }
+        println!("] sync-on-start: {}", self.sync_on_start);
 
         let path = PathBuf::from(shellexpand::tilde(&self.source).as_ref());
 
@@ -115,18 +119,10 @@ impl Sync {
 struct ProjectConfig {
     projects: BTreeMap<String, Sync>,
     debounce: f32,
-    filter: Option<String>,
 }
 
 impl ProjectConfig {
     fn sync_projects(&mut self) {
-        // Retain only those entries that match the filter string
-        if let Some(filter) = &self.filter {
-            self.projects.retain(|_name, project| {
-                project.destination.contains(filter) || project.name == _SELF_CONFIG_ //|| project.path.contains(&filter)
-            });
-        }
-
         let (tx, rx) = std::sync::mpsc::channel::<SyncUpdate>();
 
         let mut watchers = Vec::<_>::new();
@@ -181,7 +177,7 @@ where
             Sync {
                 name: _SELF_CONFIG_.into(),
                 source: config_path.to_str().unwrap().to_string(),
-                destination: config_path.to_str().unwrap().to_string(),
+                destinations: vec![config_path.to_str().unwrap().to_string()],
                 synced: Instant::now(),
                 sync_on_start: false,
                 ignore: "".into(),
@@ -198,6 +194,15 @@ pub fn run(config_path: &Path, filter: Option<String>) {
         println!("Reading sync config from {}...", config_path.display().to_string().bright_yellow());
         let config = config::read_config(config_path);
         // println!("Parsed config: {:#?}", config);
+
+        // Retain only those entries that match the filter string
+        fn destination_filter(mut destinations: Vec<String>, filter: &Option<String>) -> Vec<String> {
+            if let Some(filter) = filter {
+                destinations.retain(|dest| dest.contains(filter));
+            }
+            destinations
+        }
+
         let projects = config
             .sync
             .into_iter()
@@ -207,7 +212,7 @@ pub fn run(config_path: &Path, filter: Option<String>) {
                     Sync {
                         name: c.name,
                         source: c.source,
-                        destination: c.destination,
+                        destinations: destination_filter(c.destinations, &filter),
                         synced: Instant::now(),
                         sync_on_start: c.sync_on_start,
                         ignore: c.ignore,
@@ -220,7 +225,6 @@ pub fn run(config_path: &Path, filter: Option<String>) {
         ProjectConfig {
             projects,
             debounce: config.debounce,
-            filter: filter.clone(),
         }
     };
 

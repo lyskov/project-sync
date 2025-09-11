@@ -62,7 +62,7 @@ debounce = 0.500 # seconds to debounce file change events
 [[sync]]
 name = 'example-local-sync'
 source = '~/projects/my-local-dir/'
-destination = '/Users/yourname/backup-dir/'
+destinations = ['/Users/yourname/backup-dir/']
 
 sync_on_start = true
 
@@ -75,7 +75,7 @@ node_modules
 [[sync]]
 name = 'example-remote-sync'
 source = '~/projects/my-project/'
-destination = 'username@remote-server:~/my-project'
+destinations = ['username@remote-server:~/my-project']
 
 sync_on_start = true
 options = '-az -e ssh --delete'
@@ -96,15 +96,15 @@ target
 
 #### Per-Sync Job Fields
 
-* `name`: Unique name for the sync job.
-* `source`: Source directory. `~` is expanded to home.
-* `destination`: Destination path. Can be local or remote via SSH.
-* `sync_on_start`: If `true`, will sync automatically when the tool starts.
-* `options`: Optional `rsync` options to override the default (`-az -e ssh`).
+* `name` (string): Unique name for the sync job.
+* `source` (string): Source directory. `~` is expanded to home.
+* `destinations` (array of strings): List of destination paths. Can be local or remote via SSH.
+* `sync_on_start` (boolean):: If `true`, will sync automatically when the tool starts.
+* `options` (string, optional): Optional `rsync` options to override the default (`-az -e ssh`).
 
   * **Note**: If `options` is not specified, it defaults to `-az -e ssh`.
   * Including `--delete` in the options will cause files in the destination that are not present in the source to be removed. **Use with caution!**
-* `ignore`: Multiline string of patterns (one per line) to exclude from sync.
+* `ignore` (string, optional): Multiline string of patterns (one per line) to exclude from sync.
 
   * **Note**: If `ignore` is not specified, it defaults to ignoring `.git`.
 

@@ -14,7 +14,7 @@ pub struct Config {
 pub struct SyncRule {
     pub name: String,
     pub source: String,
-    pub destination: String,
+    pub destinations: Vec<String>,
 
     #[serde(default = "default_sync_on_start")]
     pub sync_on_start: bool,
