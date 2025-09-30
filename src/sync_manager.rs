@@ -2,7 +2,7 @@ use colored::Colorize;
 use tokio_util::sync::CancellationToken;
 
 use crate::config::Config;
-use crate::sync::SyncItem;
+use crate::sync_item::SyncItem;
 
 pub struct ProjectsWatch(Vec<SyncItem>);
 
@@ -36,4 +36,9 @@ impl ProjectsWatch {
         let cancellation_token = CancellationToken::new();
         futures::future::join_all(self.0.iter().map(|p| async { p.sync(cancellation_token.clone()).await })).await;
     }
+}
+
+pub async fn sync_projects(config: Config) {
+    let projects_watch = ProjectsWatch::new(config);
+    projects_watch.sync_projects().await;
 }

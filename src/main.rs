@@ -5,8 +5,8 @@ use clap::Parser;
 use crate::config::Config;
 
 mod config;
-mod projects_watcher;
-mod sync;
+mod sync_item;
+mod sync_manager;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
@@ -43,7 +43,6 @@ async fn main() {
         //     config.verbose = verbose;
         // }
 
-        let projects_watch = projects_watcher::ProjectsWatch::new(config);
-        projects_watch.sync_projects().await;
+        sync_manager::sync_projects(config).await;
     }
 }
