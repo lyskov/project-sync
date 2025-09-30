@@ -1,100 +1,57 @@
-use std::{
-    collections::BTreeMap,
-    path::{Path, PathBuf},
-    thread::sleep,
-    time::{Duration, Instant},
-};
+use std::path::Path;
+use std::path::PathBuf;
+use std::time::Duration;
 
 use colored::Colorize;
+use tokio::sync::mpsc::Sender;
+use tokio::time::Instant;
+use tokio::time::sleep;
+use tokio_util::sync::CancellationToken;
 
-use crate::config;
-
-const _SELF_CONFIG_: &str = "project-sync-self-config";
+pub const _SELF_CONFIG_: &str = "project-sync-self-config";
+pub const _RSYNC_DEFAULT_OPTIONS_: &str = "--timeout=64 -az -e 'ssh -o ConnectTimeout=64'";
 
 #[derive(Debug)]
-//#[allow(dead_code)]
-pub struct Sync {
+pub struct SyncUpdate {
+    pub name: String,
+    pub update: Instant,
+}
+
+#[derive(Debug)]
+pub struct SyncItem {
     pub name: String,
     pub source: String,
-    pub destinations: Vec<String>,
-    pub synced: Instant,
-    //updated: Instant,
+    pub destination: String,
     pub sync_on_start: bool,
     pub ignore: String,
     pub options: String,
+    pub debounce: f32,
+    pub verbose: bool,
 }
 
-#[derive(Debug)]
-struct SyncUpdate {
-    name: String,
-    update: Instant,
-}
-
-impl Sync {
-    fn sync_extras(&self) -> String {
-        // let git_ignore = ".git\n";
-        // let rsync_ignore = self.ignore.as_deref().unwrap_or(git_ignore);
-        // let rsync_ignore = if rsync_ignore.starts_with(git_ignore) {
-        //     git_ignore
-        // } else {
-        //     &format!("{}{}", git_ignore, rsync_ignore)
-        // };
-
-        let rsync_ignore_dir = PathBuf::from(shellexpand::tilde("~/.cache/project-sync").as_ref());
-        std::fs::create_dir_all(&rsync_ignore_dir).unwrap();
-
-        let rsync_ignore_path = rsync_ignore_dir.join(self.name.clone() + ".rsync-ignore");
-
-        std::fs::write(&rsync_ignore_path, &self.ignore).expect("Can not create rsync-ignore file...");
-
-        format!("{} --exclude-from='{}'", self.options, rsync_ignore_path.display())
-    }
-
-    fn sync(&mut self) {
-        for destination in &self.destinations {
-            //std::thread::sleep(Duration::from_secs_f32(0.25));
-            print!("Syncing {} ", self.name.bright_green());
-
-            let verbosity = "--itemize-changes"; // -v
-            let extras = self.sync_extras();
-            let command_line = format!("rsync {verbosity} -az -e ssh {extras} {} '{}'", self.source, destination);
-
-            println!("{}", command_line.white().dimmed());
-
-            let mut attempts = 0;
-            let start = Instant::now();
-
-            self.synced = Instant::now();
-            while !std::process::Command::new("sh")
-                .arg("-c")
-                .arg(&command_line)
-                .status()
-                .expect("could not run shell command...")
-                .success()
-            {
-                println!("{}... going to sleep and retry...", "FAILED".on_red());
-                std::thread::sleep(Duration::from_secs(4));
-                if attempts > 7 {
-                    println!("Too many failed attempts: {}, giving up...", attempts.to_string().bright_red());
-                    break;
-                }
-                attempts += 1;
-            }
-
-            let _duration = start.elapsed();
-            //println!("Elapsed time: {:.2?}", _duration);
+impl SyncItem {
+    pub fn new_config_file_sync(config_path: &Path, debounce: f32, verbose: bool) -> Self {
+        SyncItem {
+            name: _SELF_CONFIG_.into(),
+            source: config_path.to_str().unwrap().to_string(),
+            destination: config_path.to_str().unwrap().to_string(),
+            sync_on_start: false,
+            ignore: "".into(),
+            options: "".into(),
+            debounce,
+            verbose,
         }
     }
-    fn create_project_watcher(&self, transmitter: std::sync::mpsc::Sender<SyncUpdate>) -> notify::RecommendedWatcher {
+
+    pub fn create_project_watcher(&self, transmitter: Sender<SyncUpdate>) -> notify::RecommendedWatcher {
         println!(
-            "Adding {:<16} {:>24} → [", // {:<32}
+            // "Adding {:<16} {:>24} →     {:?} sync-on-start: {}", // {:<32}
+            "Adding {} {} → {:?}", // {:<32}
             self.name.bright_green(),
             self.source,
+            self.destination,
+            //self.sync_on_start
         );
-        for d in &self.destinations {
-            println!("    {d}");
-        }
-        println!("] sync-on-start: {}", self.sync_on_start);
 
         let path = PathBuf::from(shellexpand::tilde(&self.source).as_ref());
 
@@ -103,7 +60,7 @@ impl Sync {
         let project_name = self.name.clone();
         let mut watcher = notify::recommended_watcher(move |res: Result<notify::Event, notify::Error>| match res {
             Ok(_) => transmitter
-                .send(SyncUpdate {
+                .blocking_send(SyncUpdate {
                     name: project_name.clone(),
                     update: Instant::now(),
                 })
@@ -114,119 +71,113 @@ impl Sync {
         notify::Watcher::watch(&mut watcher, &path, notify::RecursiveMode::Recursive).unwrap();
         watcher
     }
-}
 
-struct ProjectConfig {
-    projects: BTreeMap<String, Sync>,
-    debounce: f32,
-}
+    fn rsync_extras(&self) -> String {
+        let rsync_ignore_file_path_root = PathBuf::from(shellexpand::tilde("~/.cache/project-sync").as_ref());
+        std::fs::create_dir_all(&rsync_ignore_file_path_root).unwrap();
+        let rsync_ignore_path = rsync_ignore_file_path_root.join(self.name.clone() + ".rsync-ignore");
+        std::fs::write(&rsync_ignore_path, &self.ignore).expect("Can not create rsync-ignore file...");
 
-impl ProjectConfig {
-    fn sync_projects(&mut self) {
-        let (tx, rx) = std::sync::mpsc::channel::<SyncUpdate>();
+        let options = if self.options.is_empty() { "" } else { &format!("{} ", self.options) };
 
-        let mut watchers = Vec::<_>::new();
-        for (name, p) in &self.projects {
-            watchers.push(p.create_project_watcher(tx.clone()));
-
-            if p.sync_on_start {
-                //println!("Scheduling initial sync for {}...", name.green());
-                tx.send(SyncUpdate {
-                    name: name.clone(),
-                    update: Instant::now(),
-                })
-                .unwrap();
-            }
-        }
-        println!();
-
-        while let Ok(project_update) = rx.recv() {
-            // println!("{project_update:?}");
-
-            let p = self.projects.get_mut(&project_update.name).unwrap();
-
-            if project_update.name == _SELF_CONFIG_ {
-                println!(
-                    "{} file {} detected, reloading...\n",
-                    "UPDATE to configuration".truecolor(239, 134, 62).underline(),
-                    p.source.green()
-                );
-                return;
-            }
-
-            if project_update.update > p.synced {
-                let duration = project_update.update.duration_since(p.synced);
-                if duration.as_secs_f32() < self.debounce {
-                    sleep(Duration::from_secs_f32(self.debounce) - duration);
-                }
-                p.sync();
-            }
-        }
+        format!("{}--exclude-from='{}'", options, rsync_ignore_path.display())
     }
-}
 
-fn run_with_project_config_factory<F>(project_config_factory: F, config_path: &Path)
-where
-    F: Fn() -> ProjectConfig,
-{
-    loop {
-        let mut project_config: ProjectConfig = project_config_factory();
+    async fn run_rsync(&self, previous_sync_time: Instant) -> Instant {
+        let extras = self.rsync_extras();
+        let verbosity = if self.verbose { "--itemize-changes " } else { "" };
+        let command_line = format!("rsync {verbosity}{_RSYNC_DEFAULT_OPTIONS_} {extras} {} '{}'", self.source, self.destination);
 
-        project_config.projects.insert(
-            _SELF_CONFIG_.into(),
-            Sync {
-                name: _SELF_CONFIG_.into(),
-                source: config_path.to_str().unwrap().to_string(),
-                destinations: vec![config_path.to_str().unwrap().to_string()],
-                synced: Instant::now(),
-                sync_on_start: false,
-                ignore: "".into(),
-                options: "".into(),
-            },
+        let synced = Instant::now();
+
+        println!(
+            "{} Syncing {} {}",
+            format!("[{}]", chrono::Local::now().format("%Y-%m-%d %H:%M:%S")).bright_blue(),
+            self.name.bright_green(),
+            command_line.white().dimmed()
         );
 
-        project_config.sync_projects();
-    }
-}
-
-pub fn run(config_path: &Path, filter: Option<String>) {
-    let projects_factory = move || -> ProjectConfig {
-        println!("Reading sync config from {}...", config_path.display().to_string().bright_yellow());
-        let config = config::read_config(config_path);
-        // println!("Parsed config: {:#?}", config);
-
-        // Retain only those entries that match the filter string
-        fn destination_filter(mut destinations: Vec<String>, filter: &Option<String>) -> Vec<String> {
-            if let Some(filter) = filter {
-                destinations.retain(|dest| dest.contains(filter));
+        let mut attempts = 1;
+        while !tokio::process::Command::new("sh")
+            .arg("-c")
+            .arg(&command_line)
+            .status()
+            .await
+            .expect("could not run shell command...")
+            .success()
+        {
+            println!("{} to sync {} → {}... going to sleep and retry...", "[FAILED]".on_red(), self.name, self.destination);
+            std::thread::sleep(Duration::from_secs(4 + attempts * 2));
+            if attempts > 1 {
+                println!("Too many failed attempts: {}, giving up...", attempts.to_string().bright_red());
+                return previous_sync_time;
             }
-            destinations
+            attempts += 1;
+        }
+        //sleep(Duration::from_secs_f32(10.25));
+        println!(
+            "{} Synced {} {}",
+            format!("[{}]", chrono::Local::now().format("%Y-%m-%d %H:%M:%S")).bright_blue(),
+            self.name.bright_green(),
+            command_line.white().dimmed()
+        );
+        synced
+    }
+
+    async fn process_update_event(&self, cancellation_token: &CancellationToken, SyncUpdate { name, update }: SyncUpdate, mut synced: Instant) -> Instant {
+        // println!("{project_update:?}");
+        if name == _SELF_CONFIG_ {
+            println!(
+                "{} file {} detected, reloading...\n",
+                "UPDATE to configuration".truecolor(239, 134, 62).underline(),
+                self.source.green()
+            );
+            cancellation_token.cancel();
+            return synced;
         }
 
-        let projects = config
-            .sync
-            .into_iter()
-            .map(|c| {
-                (
-                    c.name.clone(),
-                    Sync {
-                        name: c.name,
-                        source: c.source,
-                        destinations: destination_filter(c.destinations, &filter),
-                        synced: Instant::now(),
-                        sync_on_start: c.sync_on_start,
-                        ignore: c.ignore,
-                        options: c.options,
-                    },
-                )
+        if update >= synced {
+            let duration = update.duration_since(synced);
+            if duration.as_secs_f32() < self.debounce {
+                sleep(Duration::from_secs_f32(self.debounce) - duration).await;
+            }
+            synced = self.run_rsync(synced).await;
+        }
+        synced
+    }
+
+    pub async fn sync(&self, cancellation_token: CancellationToken) {
+        let mut synced = Instant::now();
+
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<SyncUpdate>(1024);
+
+        let _watcher = self.create_project_watcher(tx.clone());
+
+        if self.sync_on_start {
+            //println!("Scheduling initial sync for {}...", name.green());
+            tx.send(SyncUpdate {
+                name: self.name.clone(),
+                update: Instant::now(),
             })
-            .collect();
-
-        ProjectConfig {
-            projects,
-            debounce: config.debounce,
+            .await
+            .unwrap();
         }
-    };
 
-    run_with_project_config_factory(projects_factory, config_path);
+        loop {
+            tokio::select! {
+                maybe_update = rx.recv() => {
+                    if let Some(project_update) = maybe_update {
+                        synced = self.process_update_event(&cancellation_token, project_update, synced).await;
+                    }
+                    else {
+                        break; // channel closed
+                    }
+                }
+                _ = cancellation_token.cancelled() => {
+                    // println!("Cancellation requested, terminating...");
+                    break;
+                }
+            }
+        }
+    }
 }
