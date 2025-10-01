@@ -4,10 +4,10 @@ use tokio_util::sync::CancellationToken;
 use crate::config::Config;
 use crate::sync_item::SyncItem;
 
-pub struct ProjectsWatch(Vec<SyncItem>);
+pub struct Projects(Vec<SyncItem>);
 
-impl ProjectsWatch {
-    pub fn new(config: Config) -> Self {
+impl Projects {
+    fn new(config: Config) -> Self {
         println!("Reading sync config from {}...", config.config_path.display().to_string().bright_yellow());
 
         let mut p: Vec<SyncItem> = config
@@ -30,7 +30,7 @@ impl ProjectsWatch {
         let config_sync = SyncItem::new_config_file_sync(&config.config_path, config.debounce, config.verbose);
         p.push(config_sync);
 
-        ProjectsWatch(p)
+        Projects(p)
     }
     pub async fn sync_projects(&self) {
         let cancellation_token = CancellationToken::new();
@@ -39,6 +39,6 @@ impl ProjectsWatch {
 }
 
 pub async fn sync_projects(config: Config) {
-    let projects_watch = ProjectsWatch::new(config);
+    let projects_watch = Projects::new(config);
     projects_watch.sync_projects().await;
 }
