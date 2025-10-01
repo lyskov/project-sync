@@ -1,4 +1,7 @@
-use std::{fs, path::Path};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use serde::Deserialize;
 
@@ -7,11 +10,17 @@ pub struct Config {
     #[serde(default = "default_debounce")]
     pub debounce: f32,
 
-    pub sync: Vec<SyncRule>,
+    #[serde(default)] // missing field → false
+    pub verbose: bool,
+
+    pub sync: Vec<SyncRuleToml>,
+
+    #[serde(skip)]
+    pub config_path: PathBuf,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct SyncRule {
+pub struct SyncRuleToml {
     pub name: String,
     pub source: String,
     pub destinations: Vec<String>,
@@ -22,29 +31,38 @@ pub struct SyncRule {
     #[serde(default = "default_ignore")]
     pub ignore: String,
 
-    #[serde(default = "default_options")]
+    #[serde(default)]
     pub options: String,
 }
 
 fn default_sync_on_start() -> bool {
-    true
+    false
 }
 
 fn default_ignore() -> String {
     ".git\n".into()
 }
 
-fn default_options() -> String {
-    "-az -e ssh".into()
-}
+// fn default_options() -> String {
+//     "-az -e ssh".into()
+// }
 
 fn default_debounce() -> f32 {
     0.08
 }
 
-pub fn read_config(path: &Path) -> Config {
-    let toml_str = fs::read_to_string(path).unwrap_or_else(|e| panic!("Error: failed to read config file: {} {e}", path.display()));
-    let config: Config = toml::from_str(&toml_str).expect("Failed to parse TOML");
-    //println!("Parsed config: {:#?}", config);
-    config
+impl Config {
+    pub fn from_config_path(path: &Path) -> Self {
+        let toml_str = fs::read_to_string(path).unwrap_or_else(|e| panic!("Error: failed to read config file: {} {e}", path.display()));
+        let mut config: Config = toml::from_str(&toml_str).expect("Failed to parse TOML");
+        //println!("Parsed config: {:#?}", config);
+
+        config.config_path = path.into();
+        config
+    }
+    pub fn retain_destinations(&mut self, filter: &str) {
+        for s in self.sync.iter_mut() {
+            s.destinations.retain(|dest| dest.contains(filter));
+        }
+    }
 }

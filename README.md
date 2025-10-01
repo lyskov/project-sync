@@ -78,7 +78,7 @@ source = '~/projects/my-project/'
 destinations = ['username@remote-server:~/my-project']
 
 sync_on_start = true
-options = '-az -e ssh --delete'
+options = '--delete'
 
 ignore = '''
 .git
@@ -93,6 +93,7 @@ target
 #### Global Options
 
 * `debounce`: Debounce interval in seconds for file watching. Prevents excessive syncing during rapid file changes.
+* `verbose`: Enables additional logging; can be overridden via command-line option.
 
 #### Per-Sync Job Fields
 
@@ -100,7 +101,7 @@ target
 * `source` (string): Source directory. `~` is expanded to home.
 * `destinations` (array of strings): List of destination paths. Can be local or remote via SSH.
 * `sync_on_start` (boolean):: If `true`, will sync automatically when the tool starts.
-* `options` (string, optional): Optional `rsync` options to override the default (`-az -e ssh`).
+* `options` (string, optional): Optional `rsync` options to be specified after the default (`-az -e ssh`).
 
   * **Note**: If `options` is not specified, it defaults to `-az -e ssh`.
   * Including `--delete` in the options will cause files in the destination that are not present in the source to be removed. **Use with caution!**

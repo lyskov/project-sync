@@ -1,11 +1,14 @@
 use std::path::PathBuf;
 
-use clap::Parser as clap_Parser;
+use clap::Parser;
+
+use crate::config::Config;
 
 mod config;
-mod sync;
+mod sync_item;
+mod sync_manager;
 
-#[derive(clap_Parser, Debug)]
+#[derive(Parser, Debug)]
 #[command(author, version, about)]
 struct Args {
     /// Activate debug mode
@@ -24,9 +27,22 @@ struct Args {
     config: PathBuf,
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let args = Args::parse();
 
-    let config_path = args.config;
-    sync::run(&config_path, args.filter);
+    loop {
+        let mut config = Config::from_config_path(&args.config);
+
+        if let Some(filter) = &args.filter {
+            config.retain_destinations(filter);
+        }
+
+        config.verbose = args.verbose;
+        // if let Some(verbose) = args.verbose {
+        //     config.verbose = verbose;
+        // }
+
+        sync_manager::sync_projects(config).await;
+    }
 }
