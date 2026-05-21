@@ -53,7 +53,9 @@ fn default_debounce() -> f32 {
 
 impl Config {
     pub fn from_config_path(path: &Path) -> Self {
-        let toml_str = fs::read_to_string(path).unwrap_or_else(|e| panic!("Error: failed to read config file: {} {e}", path.display()));
+        let toml_str = fs::read_to_string(path).unwrap_or_else(|e| {
+            panic!("Error: failed to read config file: {} {e}", path.display())
+        });
         let mut config: Config = toml::from_str(&toml_str).expect("Failed to parse TOML");
         //println!("Parsed config: {:#?}", config);
 

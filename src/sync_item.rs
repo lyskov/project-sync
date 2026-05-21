@@ -43,7 +43,10 @@ impl SyncItem {
         }
     }
 
-    pub fn create_project_watcher(&self, transmitter: Sender<SyncUpdate>) -> notify::RecommendedWatcher {
+    pub fn create_project_watcher(
+        &self,
+        transmitter: Sender<SyncUpdate>,
+    ) -> notify::RecommendedWatcher {
         println!(
             // "Adding {:<16} {:>24} →     {:?} sync-on-start: {}", // {:<32}
             "Adding {} {} → {:?}", // {:<32}
@@ -58,35 +61,59 @@ impl SyncItem {
         //println!("Creating watcher for project {} in directory {}", name.green(), path.display());
 
         let project_name = self.name.clone();
-        let mut watcher = notify::recommended_watcher(move |res: Result<notify::Event, notify::Error>| match res {
-            Ok(_) => transmitter
-                .blocking_send(SyncUpdate {
-                    name: project_name.clone(),
-                    update: Instant::now(),
-                })
-                .unwrap(),
-            Err(e) => println!("Watcher for project {} got Error {:?}", project_name.clone(), e),
-        })
+        let mut watcher = notify::recommended_watcher(
+            move |res: Result<notify::Event, notify::Error>| match res {
+                Ok(_) => transmitter
+                    .blocking_send(SyncUpdate {
+                        name: project_name.clone(),
+                        update: Instant::now(),
+                    })
+                    .unwrap(),
+                Err(e) => println!(
+                    "Watcher for project {} got Error {:?}",
+                    project_name.clone(),
+                    e
+                ),
+            },
+        )
         .unwrap();
         notify::Watcher::watch(&mut watcher, &path, notify::RecursiveMode::Recursive).unwrap();
         watcher
     }
 
     fn rsync_extras(&self) -> String {
-        let rsync_ignore_file_path_root = PathBuf::from(shellexpand::tilde("~/.cache/project-sync").as_ref());
+        let rsync_ignore_file_path_root =
+            PathBuf::from(shellexpand::tilde("~/.cache/project-sync").as_ref());
         std::fs::create_dir_all(&rsync_ignore_file_path_root).unwrap();
-        let rsync_ignore_path = rsync_ignore_file_path_root.join(self.name.clone() + ".rsync-ignore");
-        std::fs::write(&rsync_ignore_path, &self.ignore).expect("Can not create rsync-ignore file...");
+        let rsync_ignore_path =
+            rsync_ignore_file_path_root.join(self.name.clone() + ".rsync-ignore");
+        std::fs::write(&rsync_ignore_path, &self.ignore)
+            .expect("Can not create rsync-ignore file...");
 
-        let options = if self.options.is_empty() { "" } else { &format!("{} ", self.options) };
+        let options = if self.options.is_empty() {
+            ""
+        } else {
+            &format!("{} ", self.options)
+        };
 
-        format!("{}--exclude-from='{}'", options, rsync_ignore_path.display())
+        format!(
+            "{}--exclude-from='{}'",
+            options,
+            rsync_ignore_path.display()
+        )
     }
 
     async fn run_rsync(&self, previous_sync_time: Instant) -> Instant {
         let extras = self.rsync_extras();
-        let verbosity = if self.verbose { "--itemize-changes " } else { "" };
-        let command_line = format!("rsync {verbosity}{_RSYNC_DEFAULT_OPTIONS_} {extras} {} '{}'", self.source, self.destination);
+        let verbosity = if self.verbose {
+            "--itemize-changes "
+        } else {
+            ""
+        };
+        let command_line = format!(
+            "rsync {verbosity}{_RSYNC_DEFAULT_OPTIONS_} {extras} {} '{}'",
+            self.source, self.destination
+        );
 
         let synced = Instant::now();
 
@@ -106,10 +133,18 @@ impl SyncItem {
             .expect("could not run shell command...")
             .success()
         {
-            println!("{} to sync {} → {}... going to sleep and retry...", "[FAILED]".on_red(), self.name, self.destination);
+            println!(
+                "{} to sync {} → {}... going to sleep and retry...",
+                "[FAILED]".on_red(),
+                self.name,
+                self.destination
+            );
             std::thread::sleep(Duration::from_secs(4 + attempts * 2));
             if attempts > 1 {
-                println!("Too many failed attempts: {}, giving up...", attempts.to_string().bright_red());
+                println!(
+                    "Too many failed attempts: {}, giving up...",
+                    attempts.to_string().bright_red()
+                );
                 return previous_sync_time;
             }
             attempts += 1;
@@ -124,12 +159,19 @@ impl SyncItem {
         synced
     }
 
-    async fn process_update_event(&self, cancellation_token: &CancellationToken, SyncUpdate { name, update }: SyncUpdate, mut synced: Instant) -> Instant {
+    async fn process_update_event(
+        &self,
+        cancellation_token: &CancellationToken,
+        SyncUpdate { name, update }: SyncUpdate,
+        mut synced: Instant,
+    ) -> Instant {
         // println!("{project_update:?}");
         if name == _SELF_CONFIG_ {
             println!(
                 "{} file {} detected, reloading...\n",
-                "UPDATE to configuration".truecolor(239, 134, 62).underline(),
+                "UPDATE to configuration"
+                    .truecolor(239, 134, 62)
+                    .underline(),
                 self.source.green()
             );
             cancellation_token.cancel();

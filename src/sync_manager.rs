@@ -8,7 +8,10 @@ pub struct Projects(Vec<SyncItem>);
 
 impl Projects {
     fn new(config: Config) -> Self {
-        println!("Reading sync config from {}...", config.config_path.display().to_string().bright_yellow());
+        println!(
+            "Reading sync config from {}...",
+            config.config_path.display().to_string().bright_yellow()
+        );
 
         let mut p: Vec<SyncItem> = config
             .sync
@@ -27,14 +30,20 @@ impl Projects {
             })
             .collect();
 
-        let config_sync = SyncItem::new_config_file_sync(&config.config_path, config.debounce, config.verbose);
+        let config_sync =
+            SyncItem::new_config_file_sync(&config.config_path, config.debounce, config.verbose);
         p.push(config_sync);
 
         Projects(p)
     }
     pub async fn sync_projects(&self) {
         let cancellation_token = CancellationToken::new();
-        futures::future::join_all(self.0.iter().map(|p| async { p.sync(cancellation_token.clone()).await })).await;
+        futures::future::join_all(
+            self.0
+                .iter()
+                .map(|p| async { p.sync(cancellation_token.clone()).await }),
+        )
+        .await;
     }
 }
 
